@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./src:/app/src
+    env_file:
+      - .env
+    depends_on:
+      - mlflow
+
+  mlflow:
+    image: "python:3.9-slim"
+    command: >
+      sh -c "pip install mlflow && 
+             mlflow server 
+             --backend-store-uri sqlite:///mlflow.db 
+             --default-artifact-root ./mlruns 
+             --host 0.0.0.0"
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./mlflow_data:/app/mlflow.db
+      - ./mlruns:/app/mlruns

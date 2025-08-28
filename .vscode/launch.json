@@ -1,0 +1,43 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Python: Run API Server",
+      "type": "python",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": [
+        "hybrid_xai_healthcare.api.app:app",
+        "--reload",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000"
+      ],
+      "jinja": true
+    },
+    {
+      "name": "Python: Train Model",
+      "type": "python",
+      "request": "launch",
+      "program": "scripts/train_model.py",
+      "args": ["--config", "config/model_config.yaml"],
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Python: Generate Explanations",
+      "type": "python",
+      "request": "launch",
+      "program": "scripts/generate_explanations.py",
+      "args": ["--model-path", "models/trained/hybrid_model.pkl"],
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Python: Run Tests",
+      "type": "python",
+      "request": "launch",
+      "module": "pytest",
+      "console": "integratedTerminal"
+    }
+  ]
+}

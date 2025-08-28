@@ -1,0 +1,16 @@
+ensemble_model:
+  ensemble_config:
+    models:
+    - random_forest
+    - xgboost
+    - neural_network
+    voting: soft
+  hyperparameters:
+    n_estimators: 100
+    random_state: 42
+  model_type: ensemble
+hybrid_model:
+  hyperparameters:
+    dropout_rate: 0.2
+    fusion_strategy: attention
+  model_type: multimodal

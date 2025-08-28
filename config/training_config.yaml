@@ -1,0 +1,6 @@
+batch_size: 32
+cross_validation_folds: 5
+early_stopping: true
+epochs: 100
+learning_rate: 0.001
+patience: 10

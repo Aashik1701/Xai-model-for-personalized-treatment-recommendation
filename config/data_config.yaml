@@ -1,0 +1,13 @@
+data_path: data/processed/healthcare_data.csv
+features:
+- age
+- gender
+- symptoms
+- lab_results
+preprocessing_steps:
+- normalize
+- encode_categorical
+- handle_missing
+target_column: treatment_outcome
+test_split: 0.1
+validation_split: 0.2

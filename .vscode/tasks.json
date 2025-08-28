@@ -1,0 +1,40 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Setup Virtual Environment",
+      "type": "shell",
+      "command": "python3 -m venv venv",
+      "problemMatcher": []
+    },
+    {
+      "label": "Install Development Dependencies",
+      "type": "shell",
+      "command": "venv/bin/pip install -r requirements.txt -e .[dev]",
+      "problemMatcher": []
+    },
+    {
+      "label": "Start MLflow Server",
+      "type": "shell",
+      "command": "mlflow server --backend-store-uri sqlite:///mlflow.db --default-artifact-root ./mlruns --host 0.0.0.0",
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "Run Tests",
+      "type": "shell",
+      "command": "pytest tests/ -v --cov=src --cov-report=html",
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Build Documentation",
+      "type": "shell",
+      "command": "sphinx-build -b html docs/source docs/build",
+      "problemMatcher": []
+    }
+  ]
+}

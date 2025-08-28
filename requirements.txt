@@ -1,0 +1,306 @@
+# Core ML and Data Science Libraries
+numpy>=1.21.0
+pandas>=1.3.0
+scikit-learn>=1.0.0
+scipy>=1.7.0
+matplotlib>=3.4.0
+seaborn>=0.11.0
+
+# Deep Learning Frameworks
+torch>=1.12.0
+torchvision>=0.13.0
+tensorflow>=2.8.0
+keras>=2.8.0
+
+# Explainable AI Libraries
+shap>=0.41.0
+lime>=0.2.0.1
+captum>=0.5.0
+interpret>=0.2.7
+
+# Ensemble and Advanced ML
+xgboost>=1.6.0
+lightgbm>=3.3.0
+catboost>=1.0.0
+imbalanced-learn>=0.8.0
+
+# Healthcare and Medical Data
+nibabel>=3.2.0
+pydicom>=2.3.0
+SimpleITK>=2.1.0
+scikit-image>=0.19.0
+
+# Graph Neural Networks
+torch-geometric>=2.1.0
+dgl>=0.9.0
+networkx>=2.6.0
+
+# Federated Learning
+flower>=1.0.0
+pysyft>=0.6.0
+
+# MLOps and Experiment Tracking
+mlflow>=1.28.0
+dvc>=2.12.0
+wandb>=0.12.0
+tensorboard>=2.8.0
+
+# API and Web Framework
+fastapi>=0.78.0
+uvicorn>=0.17.0
+streamlit>=1.10.0
+flask>=2.1.0
+
+# Data Validation and Processing
+great-expectations>=0.15.0
+pandera>=0.11.0
+pydantic>=1.9.0
+
+# Visualization and Reporting
+plotly>=5.8.0
+bokeh>=2.4.0
+dash>=2.5.0
+
+# Utilities
+tqdm>=4.64.0
+joblib>=1.1.0
+python-dotenv>=0.20.0
+click>=8.1.0
+pyyaml>=6.0
+jsonschema>=4.6.0
+
+# Testing
+pytest>=7.1.0
+pytest-cov>=3.0.0
+pytest-mock>=3.7.0
+
+# Code Quality
+black>=22.3.0
+flake8>=4.0.0
+mypy>=0.950
+pre-commit>=2.19.0
+
+# Documentation
+sphinx>=4.5.0
+sphinx-rtd-theme>=1.0.0
+
+# 2. Setup.py - Package configuration
+setup_py_content = '''from setuptools import setup, find_packages
+
+with open("README.md", "r", encoding="utf-8") as fh:
+    long_description = fh.read()
+
+with open("requirements.txt", "r", encoding="utf-8") as fh:
+    requirements = [line.strip() for line in fh if line.strip() and not line.startswith("#")]
+
+setup(
+    name="hybrid-xai-healthcare",
+    version="0.1.0",
+    author="Your Name",
+    author_email="your.email@example.com",
+    description="Hybrid Explainable AI Models for Personalized Treatment Recommendation",
+    long_description=long_description,
+    long_description_content_type="text/markdown",
+    url="https://github.com/yourusername/hybrid-xai-healthcare",
+    packages=find_packages(where="src"),
+    package_dir={"": "src"},
+    classifiers=[
+        "Development Status :: 3 - Alpha",
+        "Intended Audience :: Healthcare Industry",
+        "Intended Audience :: Science/Research",
+        "License :: OSI Approved :: MIT License",
+        "Operating System :: OS Independent",
+        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
+        "Topic :: Scientific/Engineering :: Artificial Intelligence",
+        "Topic :: Scientific/Engineering :: Medical Science Apps.",
+    ],
+    python_requires=">=3.8",
+    install_requires=requirements,
+    extras_require={
+        "dev": ["pytest", "black", "flake8", "mypy"],
+        "docs": ["sphinx", "sphinx-rtd-theme"],
+        "all": ["pytest", "black", "flake8", "mypy", "sphinx", "sphinx-rtd-theme"],
+    },
+    entry_points={
+        "console_scripts": [
+            "hybrid-xai-train=hybrid_xai_healthcare.scripts.train_model:main",
+            "hybrid-xai-predict=hybrid_xai_healthcare.scripts.predict:main",
+            "hybrid-xai-explain=hybrid_xai_healthcare.scripts.generate_explanations:main",
+        ],
+    },
+)
+'''
+
+# 3. pyproject.toml - Modern Python project configuration
+pyproject_toml_content = '''[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hybrid-xai-healthcare"
+version = "0.1.0"
+description = "Hybrid Explainable AI Models for Personalized Treatment Recommendation"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "Your Name", email = "your.email@example.com"},
+]
+keywords = ["machine-learning", "healthcare", "explainable-ai", "personalized-medicine"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Healthcare Industry",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+]
+requires-python = ">=3.8"
+dependencies = [
+    "numpy>=1.21.0",
+    "pandas>=1.3.0",
+    "scikit-learn>=1.0.0",
+    "shap>=0.41.0",
+    "lime>=0.2.0.1",
+    "mlflow>=1.28.0",
+    "fastapi>=0.78.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "black", "flake8", "mypy", "pre-commit"]
+docs = ["sphinx", "sphinx-rtd-theme"]
+all = ["pytest", "black", "flake8", "mypy", "sphinx", "sphinx-rtd-theme"]
+
+[project.urls]
+Homepage = "https://github.com/yourusername/hybrid-xai-healthcare"
+Documentation = "https://hybrid-xai-healthcare.readthedocs.io/"
+Repository = "https://github.com/yourusername/hybrid-xai-healthcare.git"
+Issues = "https://github.com/yourusername/hybrid-xai-healthcare/issues"
+
+[project.scripts]
+hybrid-xai-train = "hybrid_xai_healthcare.scripts.train_model:main"
+hybrid-xai-predict = "hybrid_xai_healthcare.scripts.predict:main"
+hybrid-xai-explain = "hybrid_xai_healthcare.scripts.generate_explanations:main"
+
+[tool.black]
+line-length = 88
+target-version = ['py38', 'py39', 'py310']
+include = '\\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \\.eggs
+  | \\.git
+  | \\.hg
+  | \\.mypy_cache
+  | \\.tox
+  | \\.venv
+  | build
+  | dist
+)/
+'''
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "--verbose --cov=src --cov-report=html --cov-report=term"
+'''
+
+# 4. .env.example - Environment variables template
+env_example_content = """# Database Configuration
+DATABASE_URL=postgresql://user:password@localhost:5432/healthcare_db
+REDIS_URL=redis://localhost:6379
+
+# MLflow Configuration
+MLFLOW_TRACKING_URI=http://localhost:5000
+MLFLOW_EXPERIMENT_NAME=hybrid_xai_healthcare
+
+# Model Configuration
+MODEL_REGISTRY_URI=s3://your-model-bucket
+DATA_STORAGE_URI=s3://your-data-bucket
+
+# API Configuration
+API_HOST=0.0.0.0
+API_PORT=8000
+API_SECRET_KEY=your-secret-key-here
+
+# Logging Configuration
+LOG_LEVEL=INFO
+LOG_FILE=logs/application.log
+
+# Security
+ENCRYPT_DATA=true
+ENCRYPTION_KEY=your-encryption-key
+
+# External Services
+FHIR_SERVER_URL=https://your-fhir-server.com
+DICOM_SERVER_URL=https://your-dicom-server.com
+
+# Monitoring
+PROMETHEUS_PORT=9090
+GRAFANA_PORT=3000
+
+# Development
+DEBUG=false
+TESTING=false
+"""
+
+# 5. Dockerfile
+dockerfile_content = '''FROM python:3.9-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \\
+    gcc \\
+    g++ \\
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements first for better caching
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the source code
+COPY src/ src/
+COPY config/ config/
+COPY scripts/ scripts/
+
+# Install the package
+COPY setup.py .
+COPY README.md .
+RUN pip install -e .
+
+# Create non-root user
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+USER appuser
+
+# Expose port
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \\
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# Default command
+CMD ["uvicorn", "hybrid_xai_healthcare.api.app:app", "--host", "0.0.0.0", "--port", "8000"]
+'''
+
+print("📋 Key Configuration Files Created:")
+print("=" * 50)
+print("1. requirements.txt - Python dependencies")
+print("2. setup.py - Package configuration")  
+print("3. pyproject.toml - Modern Python project config")
+print("4. .env.example - Environment variables template")
+print("5. Dockerfile - Container configuration")
+print("\n📄 Requirements.txt preview:")
+print(requirements_content[:500] + "...")
