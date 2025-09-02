@@ -1,9 +1,9 @@
 ensemble_model:
   ensemble_config:
     models:
-    - random_forest
-    - xgboost
-    - neural_network
+      - random_forest
+      - xgboost
+      - neural_network
     voting: soft
   hyperparameters:
     n_estimators: 100
@@ -14,3 +14,15 @@ hybrid_model:
     dropout_rate: 0.2
     fusion_strategy: attention
   model_type: multimodal
+stacking_ensemble:
+  model_type: ensemble
+  hyperparameters:
+    n_folds: 5
+    use_proba: true
+  ensemble_config:
+    base_models:
+      - random_forest
+      - gradient_boosting
+      - logistic_regression
+    meta_model: logistic_regression
+  explainability_config: {}

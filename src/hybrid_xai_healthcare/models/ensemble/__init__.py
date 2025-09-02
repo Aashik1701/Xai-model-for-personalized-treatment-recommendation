@@ -1,6 +1,9 @@
-"""
-Ensemble models for hybrid explainable AI healthcare.
-"""
+"""Ensemble models for hybrid explainable AI healthcare."""
 
-# Ensemble models will be imported here once implemented
-__all__ = []
+from .voting_ensemble import VotingEnsemble
+from .stacking_ensemble import StackingEnsemble
+
+__all__ = [
+	"VotingEnsemble",
+	"StackingEnsemble"
+]

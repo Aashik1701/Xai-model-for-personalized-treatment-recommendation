@@ -108,7 +108,7 @@ class DataLoader:
         
         try:
             # Check required columns
-            if required_columns:
+            if required_columns is not None:
                 missing_columns = set(required_columns) - set(self.data.columns)
                 if missing_columns:
                     validation_report["valid"] = False
