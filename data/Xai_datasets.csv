@@ -1,0 +1,21 @@
+Dataset Name,Size,Samples,Download Link,Data Type,Best For XAI,Laptop Specs Needed,Training Time
+Synthea Synthetic (Small),< 1 GB,1K-10K patients,github.com/synthetichealth/synthea,Complete EHR (Synthetic),Full pipeline testing,"8GB RAM, any CPU",2-6 hours
+Heart Disease UCI,< 1 MB,303 patients,archive.ics.uci.edu/ml/datasets/Heart+Disease,Tabular Clinical,SHAP/LIME on tabular,"4GB RAM, any CPU",< 30 min
+Diabetes 130-US Hospitals,100 MB,"101,766 records",archive.ics.uci.edu/ml/datasets/diabetes+130-us,Tabular Clinical,Feature importance,"8GB RAM, any CPU",1-3 hours
+Breast Cancer Wisconsin,< 1 MB,569 patients,archive.ics.uci.edu/ml/datasets/Breast+Cancer+Wisconsin,Tabular Clinical,Binary classification XAI,"4GB RAM, any CPU",< 15 min
+Medical Segmentation (Single Task),2-5 GB,500-1K images,medicaldecathlon.com (single task),Medical Images,Image attention maps,"16GB RAM, GPU preferred",4-12 hours
+ClinicalTrials.gov Sample,< 100 MB,1K-5K trials,clinicaltrials.gov/api/v2/studies,Clinical Trials,Treatment analysis,"4GB RAM, any CPU",< 1 hour
+COVID-19 Symptoms Survey,50 MB,"5,434 participants",kaggle.com/datasets/hemanthhari/symptoms-and-covid-presence,Survey Responses,Text classification XAI,"4GB RAM, any CPU",< 1 hour
+Drug Review Dataset,200 MB,"215,063 reviews",archive.ics.uci.edu/ml/datasets/Drug+Review+Dataset,Text Reviews,Sentiment + medical XAI,"8GB RAM, any CPU",2-4 hours
+Medical Appointments No-Show,10 MB,"110,527 appointments",kaggle.com/joniarroba/noshowappointments,Tabular Scheduling,Prediction explanation,"4GB RAM, any CPU",< 1 hour
+Thyroid Disease Dataset,< 1 MB,"7,200 records",archive.ics.uci.edu/ml/datasets/thyroid+disease,Tabular Clinical,Multi-class XAI,"4GB RAM, any CPU",< 30 min
+Hepatitis Dataset,< 1 MB,155 records,archive.ics.uci.edu/ml/datasets/hepatitis,Tabular Clinical,Small dataset XAI,"4GB RAM, any CPU",< 15 min
+Dermatology Dataset,< 1 MB,366 records,archive.ics.uci.edu/ml/datasets/dermatology,Tabular Clinical,Diagnostic XAI,"4GB RAM, any CPU",< 15 min
+ISIC Skin Cancer (Sample),500 MB,"2,000 images",challenge.isic-archive.com (sample),Dermoscopy Images,Image classification XAI,"8GB RAM, GPU helpful",2-6 hours
+Chest X-ray (Kaggle),1.2 GB,"5,863 images",kaggle.com/paultimothymooney/chest-xray-pneumonia,Chest X-rays,Medical image XAI,"16GB RAM, GPU preferred",6-24 hours
+Brain Tumor MRI (Small),300 MB,"3,264 images",kaggle.com/navoneel/brain-mri-images-for-brain-tumor-detection,Brain MRI,Brain image analysis,"8GB RAM, GPU helpful",2-8 hours
+Pneumonia X-ray Detection,1.1 GB,"5,856 images",kaggle.com/paultimothymooney/chest-xray-pneumonia,Chest X-rays,Chest X-ray XAI,"16GB RAM, GPU preferred",6-24 hours
+Medical Text Classification,20 MB,"3,000 texts",huggingface.co/datasets/medical_questions_pairs,Medical Text,Medical NLP XAI,"8GB RAM, any CPU",1-4 hours
+Drug Side Effects (Text),150 MB,"10,000 reviews",kaggle.com/datasets/rohanharode07/webmd-drug-reviews-dataset,Drug Review Text,Drug effect explanation,"8GB RAM, any CPU",2-6 hours
+Medical Q&A Dataset,100 MB,"5,000 Q&As",huggingface.co/datasets/medqa,Medical Q&A Text,Medical Q&A XAI,"8GB RAM, any CPU",1-3 hours
+Clinical Notes (Sample),50 MB,"1,000 notes",physionet.org/content/mimiciii-demo,Clinical Notes,Clinical text XAI,"8GB RAM, any CPU",1-2 hours
