@@ -1,13 +1,71 @@
-data_path: data/processed/healthcare_data.csv
-features:
-- age
-- gender
-- symptoms
-- lab_results
-preprocessing_steps:
-- normalize
-- encode_categorical
-- handle_missing
-target_column: treatment_outcome
-test_split: 0.1
-validation_split: 0.2
+# Default configuration for synthetic healthcare data
+default_dataset: "synthetic_healthcare"
+
+# Dataset configurations
+datasets:
+  synthetic_healthcare:
+    raw_path: "data/raw/synthetic_healthcare_data.csv"
+    processed_path: "data/processed/healthcare_data.csv"
+    train_path: "data/processed/train_data.csv"
+    test_path: "data/processed/test_data.csv"
+    target_column: "treatment_outcome"
+    data_type: "tabular"
+
+  heart_disease_uci:
+    raw_path: "data/raw/heart_disease_uci.csv"
+    processed_path: "data/processed/heart_disease_processed.csv"
+    target_column: "target"
+    data_type: "tabular"
+
+  breast_cancer_wisconsin:
+    raw_path: "data/raw/breast_cancer_wisconsin.csv"
+    processed_path: "data/processed/breast_cancer_processed.csv"
+    target_column: "diagnosis"
+    data_type: "tabular"
+
+  diabetes_130_hospitals:
+    raw_path: "data/external/diabetes_130_hospitals.csv"
+    processed_path: "data/processed/diabetes_processed.csv"
+    target_column: "readmitted"
+    data_type: "tabular"
+
+  chest_xray:
+    raw_path: "data/external/images/chest_xray/"
+    processed_path: "data/processed/chest_xray_features.csv"
+    target_column: "pneumonia"
+    data_type: "image"
+
+  medical_qa:
+    raw_path: "data/external/text/medical_qa.csv"
+    processed_path: "data/processed/medical_qa_features.csv"
+    target_column: "answer_quality"
+    data_type: "text"
+
+# Global preprocessing settings
+preprocessing:
+  tabular:
+    numeric_imputation: "median"
+    categorical_imputation: "most_frequent"
+    scaling_method: "standard"
+    encoding_method: "onehot"
+    handle_missing: true
+    normalize: true
+
+  image:
+    resize_shape: [224, 224]
+    color_mode: "rgb"
+    augmentation: true
+    normalization: "imagenet"
+
+  text:
+    max_length: 512
+    tokenizer: "bert-base-uncased"
+    lowercase: true
+    remove_special_chars: true
+
+# Data splitting
+split_config:
+  test_split: 0.2
+  validation_split: 0.2
+  random_state: 42
+  stratify: true
