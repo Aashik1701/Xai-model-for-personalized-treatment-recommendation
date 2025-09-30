@@ -32,9 +32,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "black", "flake8", "mypy", "pre-commit"]
+dev = ["pytest", "black", "flake8", "mypy", "pre-commit", "httpx", "requests"]
 docs = ["sphinx", "sphinx-rtd-theme"]
-all = ["pytest", "black", "flake8", "mypy", "sphinx", "sphinx-rtd-theme"]
+all = ["pytest", "black", "flake8", "mypy", "sphinx", "sphinx-rtd-theme", "httpx", "requests"]
 
 [project.urls]
 Homepage = "https://github.com/yourusername/hybrid-xai-healthcare"

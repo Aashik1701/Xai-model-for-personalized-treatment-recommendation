@@ -143,6 +143,7 @@ git commit -m "Add raw data to DVC"
 ### 6. Start Development Services
 
 #### Start MLflow Tracking Server
+
 ```bash
 # Using VS Code task
 Ctrl+Shift+P → "Tasks: Run Task" → "Start MLflow Server"
@@ -152,6 +153,7 @@ mlflow server --backend-store-uri sqlite:///mlflow.db --default-artifact-root ./
 ```
 
 #### Start API Server (for development)
+
 ```bash
 # Using VS Code debug configuration
 F5 → Select "Python: Run API Server"
@@ -180,6 +182,39 @@ F5 → Select "Python: Train Model"
 
 # Or run directly
 python scripts/train_model.py --config config/model_config.yaml
+```
+
+#### Ensemble CLI (`scripts/train_ensembles.py`)
+
+The lightweight ensemble runner now supports class-imbalance handling, SMOTE, and MLflow logging:
+
+```bash
+python scripts/train_ensembles.py --dataset hepatitis \
+    --mlflow \
+    --save-processed
+```
+
+Key flags:
+
+- `--dataset/-d <key>`: Dataset entry from `config/data_config.yaml`
+- `--save-processed`: Persist processed train/test splits to the dataset's `processed_path`
+- `--no-auto-weight`: Skip automatic `class_weight='balanced'` even if imbalance threshold surpassed
+- `--smote`: Force SMOTE oversampling after encoding; combines with class weights
+- `--no-smote`: Disable SMOTE (overrides dataset-level toggle)
+- `--mlflow`: Log per-class precision/recall/F1, ROC-AUC (for binary tasks), feature importances, and SMOTE status to `mlruns/`
+
+Dataset-specific overrides (e.g., enabling SMOTE by default) can be declared under `datasets.<name>.overrides`. Example:
+
+```yaml
+datasets:
+  hepatitis:
+    raw_path: data/raw/hepatitis.csv
+    processed_path: data/processed/hepatitis_processed.csv
+    target_column: target
+    overrides:
+      use_smote: true
+      column_imputation:
+        protime: median
 ```
 
 ### 3. Generate Explanations
@@ -250,6 +285,9 @@ Ctrl+Shift+P → "Tasks: Run Task" → "Run Tests"
 
 # Or manually
 pytest tests/ -v --cov=src --cov-report=html
+
+# Run only the ensemble pipeline suites (SMOTE + MLflow checks)
+pytest tests/test_train_pipeline.py -q
 ```
 
 ### Test Coverage
@@ -261,6 +299,7 @@ After running tests, open `htmlcov/index.html` in your browser to view detailed 
 ### MLflow Dashboard
 
 Access MLflow UI at http://localhost:5000 to:
+
 - Track experiments and metrics
 - Compare model performance
 - Manage model registry
@@ -322,6 +361,7 @@ sphinx-build -b html docs/source docs/build
 ### Code Style
 
 This project uses:
+
 - **Black** for code formatting
 - **Flake8** for linting
 - **MyPy** for type checking
@@ -343,6 +383,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 📞 Support
 
 For questions and support:
+
 - Open an issue on GitHub
 - Email: your.email@example.com
 - Documentation: https://hybrid-xai-healthcare.readthedocs.io/

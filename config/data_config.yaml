@@ -12,10 +12,12 @@ datasets:
     data_type: "tabular"
 
   heart_disease_uci:
-    raw_path: "data/raw/heart_disease_uci.csv"
+    raw_path: "data/raw/heart_disease.csv" # normalized output from convert_core_datasets.py
     processed_path: "data/processed/heart_disease_processed.csv"
     target_column: "target"
     data_type: "tabular"
+    overrides:
+      target_transform: "collapse_2_to_4" # map 0->0, {1,2,3,4}->1 for binary task
 
   breast_cancer_wisconsin:
     raw_path: "data/raw/breast_cancer_wisconsin.csv"
@@ -23,10 +25,33 @@ datasets:
     target_column: "diagnosis"
     data_type: "tabular"
 
+  hepatitis:
+    raw_path: "data/raw/hepatitis.csv"
+    processed_path: "data/processed/hepatitis_processed.csv"
+    target_column: "target"
+    data_type: "tabular"
+    overrides:
+      column_imputation:
+        protime: "median" # specific imputation for high-missing column
+      drop_columns: []
+      use_smote: true
+
   diabetes_130_hospitals:
     raw_path: "data/external/diabetes_130_hospitals.csv"
     processed_path: "data/processed/diabetes_processed.csv"
     target_column: "readmitted"
+    data_type: "tabular"
+
+  thyroid_disease:
+    raw_path: "data/raw/thyroid.csv" # placeholder; to be produced by upcoming converter
+    processed_path: "data/processed/thyroid_processed.csv"
+    target_column: "target"
+    data_type: "tabular"
+
+  dermatology:
+    raw_path: "data/raw/dermatology.csv" # placeholder; to be produced by upcoming converter
+    processed_path: "data/processed/dermatology_processed.csv"
+    target_column: "target"
     data_type: "tabular"
 
   chest_xray:
@@ -50,6 +75,10 @@ preprocessing:
     encoding_method: "onehot"
     handle_missing: true
     normalize: true
+    class_imbalance:
+      enable_auto_weight: true # automatically apply class_weight='balanced' beyond ratio threshold
+      imbalance_ratio_threshold: 3.0 # majority/minority ratio above which to trigger weighting
+      save_processed_default: false # default for --save-processed flag when not provided
 
   image:
     resize_shape: [224, 224]
