@@ -27,6 +27,7 @@ manifest
 venv/
 ENV/
 env/
+/venv_test/
 env.bak/
 venv.bak/
 lib/python*/site-packages/

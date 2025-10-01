@@ -21,6 +21,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import classification_report, roc_auc_score
 from collections import Counter
 import mlflow  # type: ignore
+from mlflow_manager import MLflowManager
 from hybrid_xai_healthcare.utils.imbalance import (
     decide_class_weight,
     apply_smote,
@@ -444,22 +445,45 @@ def main():  # type: ignore
             processed_path.with_name(processed_path.stem + "_test.csv"),
         )
 
-    # MLflow logging
+    # Enhanced MLflow logging with model registry
     if args.mlflow:
         try:
-            mlflow.set_tracking_uri("file:./mlruns")
-            with mlflow.start_run(run_name=f"ensemble_{dataset_key}"):
-                mlflow.log_param("dataset", dataset_key)
-                mlflow.log_param("class_weight", class_weight or "none")
-                mlflow.log_param("imbalance_ratio", float(imbalance_ratio))
-                mlflow.log_param("smote_requested", bool(smote_flag))
-                mlflow.log_param("smote_applied", bool(smote_applied))
-                mlflow.log_param("n_features", X_train.shape[1])
+            # Initialize MLflow manager
+            mlflow_manager = MLflowManager()
 
+            # Start run with enhanced metadata
+            with mlflow_manager.start_run(
+                run_name=f"ensemble_{dataset_key}",
+                tags={
+                    "model_type": "ensemble",
+                    "dataset": dataset_key,
+                    "imbalance_handling": "smote" if smote_applied else "class_weight",
+                },
+            ):
+                # Log dataset information
+                cfg = load_config()
+                dataset_config = cfg["datasets"][dataset_key]
+                mlflow_manager.log_dataset_info(dataset_key, dataset_config)
+
+                # Log preprocessing parameters
+                mlflow_manager.log_preprocessing_params(cfg.get("preprocessing", {}))
+
+                # Log training parameters
+                mlflow_manager.log_training_params(
+                    class_weight=class_weight,
+                    smote_applied=smote_applied,
+                    imbalance_ratio=imbalance_ratio,
+                    n_features=X_train.shape[1],
+                    n_train_samples=X_train.shape[0],
+                    n_test_samples=X_test.shape[0],
+                )
+
+                # Log model performance metrics
                 def _log_report(prefix: str, report: Dict[str, Any]) -> None:
+                    metrics_dict = {}
                     for label, metrics in report.items():
                         if label == "accuracy":
-                            mlflow.log_metric(f"{prefix}_accuracy", float(metrics))
+                            metrics_dict["accuracy"] = float(metrics)
                             continue
                         safe_label = (
                             str(label)
@@ -473,33 +497,89 @@ def main():  # type: ignore
                                 and metrics[metric_name] is not None
                             ):
                                 safe_metric = metric_name.replace("-", "_")
-                                mlflow.log_metric(
-                                    f"{prefix}_{safe_metric}_{safe_label}",
-                                    float(metrics[metric_name]),
-                                )
+                                key = f"{safe_metric}_{safe_label}"
+                                metrics_dict[key] = float(metrics[metric_name])
+
+                    mlflow_manager.log_model_metrics(metrics_dict, prefix)
 
                 _log_report("voting", report_v_dict)
                 _log_report("stacking", report_s_dict)
+
+                # Log ROC AUC scores
                 if roc_auc_v is not None:
-                    mlflow.log_metric("voting_roc_auc", float(roc_auc_v))
+                    mlflow_manager.log_model_metrics(
+                        {"roc_auc": float(roc_auc_v)}, "voting"
+                    )
                 if roc_auc_s is not None:
-                    mlflow.log_metric("stacking_roc_auc", float(roc_auc_s))
+                    mlflow_manager.log_model_metrics(
+                        {"roc_auc": float(roc_auc_s)}, "stacking"
+                    )
+                # Log feature importance for top features
                 if vi:
+                    feature_importance = {}
                     for rank, (fname, val) in enumerate(list(vi.items())[:10], 1):
                         safe_fname = str(fname).replace(" ", "_")
-                        mlflow.log_metric(
-                            f"voting_feat_{rank}_{safe_fname}",
-                            float(val),
-                        )
+                        feature_importance[f"feat_{rank}_{safe_fname}"] = float(val)
+                    mlflow_manager.log_model_metrics(feature_importance, "voting")
+
                 if si:
+                    feature_importance = {}
                     for rank, (fname, val) in enumerate(list(si.items())[:10], 1):
                         safe_fname = str(fname).replace(" ", "_")
-                        mlflow.log_metric(
-                            f"stacking_feat_{rank}_{safe_fname}",
-                            float(val),
+                        feature_importance[f"feat_{rank}_{safe_fname}"] = float(val)
+                    mlflow_manager.log_model_metrics(feature_importance, "stacking")
+
+                # Log models to MLflow with model registry
+                try:
+                    # Prepare input example
+                    input_example = None
+                    if len(X_test) > 0:
+                        input_example = X_test.head(1).to_dict("records")[0]
+
+                    # Log voting ensemble
+                    voting_uri = mlflow_manager.log_ensemble_model(
+                        model=voting,
+                        model_name="voting_ensemble",
+                        input_example=input_example,
+                    )
+
+                    # Log stacking ensemble
+                    stacking_uri = mlflow_manager.log_ensemble_model(
+                        model=stacking,
+                        model_name="stacking_ensemble",
+                        input_example=input_example,
+                    )
+
+                    # Register models if performance is good enough
+                    if roc_auc_v and roc_auc_v > 0.7:
+                        description_v = (
+                            f"Voting ensemble trained on {dataset_key} "
+                            f"with ROC-AUC: {roc_auc_v:.3f}"
                         )
+                        mlflow_manager.register_model(
+                            model_uri=voting_uri,
+                            model_name=f"healthcare_voting_ensemble_{dataset_key}",
+                            stage="Staging",
+                            description=description_v,
+                        )
+
+                    if roc_auc_s and roc_auc_s > 0.7:
+                        description_s = (
+                            f"Stacking ensemble trained on {dataset_key} "
+                            f"with ROC-AUC: {roc_auc_s:.3f}"
+                        )
+                        mlflow_manager.register_model(
+                            model_uri=stacking_uri,
+                            model_name=f"healthcare_stacking_ensemble_{dataset_key}",
+                            stage="Staging",
+                            description=description_s,
+                        )
+
+                except Exception as model_logging_error:
+                    logger.warning(f"Model logging failed: {model_logging_error}")
+
                 logger.info(
-                    "MLflow run logged with run_id=%s",
+                    "MLflow run completed with run_id=%s",
                     mlflow.active_run().info.run_id,
                 )
         except Exception as e:  # noqa: BLE001
