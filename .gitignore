@@ -122,4 +122,30 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
+# Project-specific exclusions
 /data
+/data/
+data/raw/
+data/processed/
+data/external/
+data/interim/
+*.csv
+*.zip
+*.json.zip
+
+# Models and artifacts (NEVER PUSH)
+/models/
+/mlruns/
+mlflow.db
+*.db
+*.sqlite
+*.sqlite3
+
+# Reports and logs
+/reports/
+/logs/
+*.log
+training_pipeline_output.log
+
+# Notebooks with outputs (clear before committing)
+notebooks/**/output/
