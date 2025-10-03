@@ -4,23 +4,29 @@ Real Dataset Training and Explainability Testing
 Train models on real healthcare datasets and test explainability toolkit.
 """
 
-import pandas as pd
-import numpy as np
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report, accuracy_score
-from sklearn.preprocessing import StandardScaler
-import joblib
+import pandas as pd  # type: ignore[import]
+import numpy as np  # type: ignore[import]
+from sklearn.ensemble import RandomForestClassifier  # type: ignore[import]
+from sklearn.linear_model import LogisticRegression  # type: ignore[import]
+from sklearn.model_selection import train_test_split  # type: ignore[import]
+from sklearn.metrics import (  # type: ignore[import]
+    classification_report,
+    accuracy_score,
+)
+from sklearn.preprocessing import StandardScaler  # type: ignore[import]
+import joblib  # type: ignore[import]
 from pathlib import Path
 import logging
+from typing import List, Optional
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-def train_model_on_dataset(dataset_name: str, model_type: str = "random_forest"):
+def train_model_on_dataset(
+    dataset_name: str, model_type: str = "random_forest"
+) -> Optional[Path]:
     """Train a model on a real dataset and save it for explainability testing."""
 
     # Load dataset
@@ -41,7 +47,8 @@ def train_model_on_dataset(dataset_name: str, model_type: str = "random_forest")
         return None
 
     # Remove non-feature columns
-    feature_cols = [col for col in df.columns if col not in ["target", "patient_id"]]
+    numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+    feature_cols = [col for col in numeric_cols if col not in ["target", "patient_id"]]
     X = df[feature_cols]
     y = df["target"]
 
@@ -77,9 +84,9 @@ def train_model_on_dataset(dataset_name: str, model_type: str = "random_forest")
     y_pred = model.predict(X_test_scaled)
     accuracy = accuracy_score(y_test, y_pred)
 
-    logger.info(f"✅ Model trained successfully!")
+    logger.info("✅ Model trained successfully!")
     logger.info(f"Accuracy: {accuracy:.3f}")
-    logger.info(f"Classification Report:")
+    logger.info("Classification Report:")
     print(classification_report(y_test, y_pred))
 
     # Save model and data
@@ -100,11 +107,11 @@ def train_model_on_dataset(dataset_name: str, model_type: str = "random_forest")
         model_path,
     )
 
-    logger.info(f"💾 Model saved: {model_path}")
+    logger.info("💾 Model saved: %s", model_path)
     return model_path
 
 
-def main():
+def main() -> List[Path]:
     """Train models on multiple real datasets."""
 
     # Available datasets
@@ -114,15 +121,19 @@ def main():
         "diabetes_130_hospitals",
         "hepatitis",
         "dermatology",
+        "thyroid_disease",
+        "heart_disease_multicenter",
+        "synthea_longitudinal",
+        "skin_cancer_imaging",
     ]
 
     # Train models
     trained_models = []
 
     for dataset in datasets:
-        logger.info(f"\n{'='*60}")
-        logger.info(f"TRAINING ON {dataset.upper()}")
-        logger.info(f"{'='*60}")
+        logger.info("\n%s", "=" * 60)
+        logger.info("TRAINING ON %s", dataset.upper())
+        logger.info("%s", "=" * 60)
 
         # Train Random Forest
         rf_path = train_model_on_dataset(dataset, "random_forest")
@@ -130,23 +141,30 @@ def main():
             trained_models.append(rf_path)
 
         # Train Logistic Regression (for smaller datasets)
-        if dataset in ["heart_disease_uci", "breast_cancer_wisconsin", "hepatitis"]:
+        if dataset in [
+            "heart_disease_uci",
+            "breast_cancer_wisconsin",
+            "hepatitis",
+            "synthea_longitudinal",
+        ]:
             lr_path = train_model_on_dataset(dataset, "logistic_regression")
             if lr_path:
                 trained_models.append(lr_path)
 
     # Summary
-    logger.info(f"\n🎉 TRAINING COMPLETE!")
-    logger.info(f"Trained {len(trained_models)} models:")
+    logger.info("\n🎉 TRAINING COMPLETE!")
+    logger.info("Trained %d models:", len(trained_models))
     for model_path in trained_models:
-        logger.info(f"  - {model_path}")
+        logger.info("  - %s", model_path)
 
-    logger.info(f"\n💡 Next steps:")
+    logger.info("\n💡 Next steps:")
     logger.info(
-        f"  1. Test explainability: python scripts/simple_explainer.py --model-path <model_path>"
+        "  1. Test explainability: python scripts/simple_explainer.py "
+        "--model-path <model_path>"
     )
     logger.info(
-        f"  2. Test personalization: python scripts/personalization_cli.py --data <dataset_path>"
+        "  2. Test personalization: python scripts/personalization_cli.py "
+        "--data <dataset_path>"
     )
 
     return trained_models
