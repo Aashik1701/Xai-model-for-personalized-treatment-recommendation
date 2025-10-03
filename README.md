@@ -358,15 +358,6 @@ sphinx-build -b html docs/source docs/build
 6. Push to the branch (`git push origin feature/amazing-feature`)
 7. Open a Pull Request
 
-### Code Style
-
-This project uses:
-
-- **Black** for code formatting
-- **Flake8** for linting
-- **MyPy** for type checking
-- **pytest** for testing
-
 VS Code is configured to automatically format and lint code on save.
 
 ## 📄 License
@@ -379,15 +370,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - MLflow for experiment tracking
 - FastAPI for API development
 - The healthcare AI research community
-
-## 📞 Support
-
-For questions and support:
-
-- Open an issue on GitHub
-- Email: your.email@example.com
-- Documentation: https://hybrid-xai-healthcare.readthedocs.io/
-
----
-
-**Happy coding! 🚀**

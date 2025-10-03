@@ -1,12 +1,81 @@
-attention_config:
-  save_attention_maps: true
-  visualize_heads: true
-lime_config:
-  num_features: 10
-  num_samples: 1000
-methods:
-- shap
-- lime
-shap_config:
-  explainer_type: auto
-  max_evals: 1000
+# Explainability Toolkit Configuration
+
+# SHAP (SHapley Additive exPlanations) Settings
+shap:
+  explainer_types:
+    tree_based:
+      type: "TreeExplainer"
+      check_additivity: true
+      approximate: false
+
+    linear:
+      type: "LinearExplainer"
+      feature_perturbation: "interventional"
+
+    kernel:
+      type: "KernelExplainer"
+      n_samples: 100
+      l1_reg: "aic"
+
+  background_data:
+    sample_size: 100
+    strategy: "kmeans"
+
+  explanations:
+    max_evals: 500
+    batch_size: 50
+    silent: false
+
+  plots:
+    summary_plot:
+      max_display: 20
+      show_values: true
+      feature_names: "auto"
+
+# LIME Settings
+lime:
+  tabular:
+    mode: "classification"
+    feature_selection: "auto"
+    discretize_continuous: true
+    discretizer: "quartiles"
+
+  explanations:
+    num_features: 10
+    num_samples: 5000
+    distance_metric: "euclidean"
+    kernel_width: 0.75
+
+# Clinical Settings
+clinical:
+  feature_groups:
+    demographics: ["age", "sex"]
+    vitals: ["blood_pressure", "heart_rate"]
+    laboratory: ["glucose", "cholesterol"]
+    lifestyle: ["smoking", "exercise"]
+
+  risk_thresholds:
+    low: 0.3
+    moderate: 0.6
+    high: 0.8
+
+# Model Configs
+model_configs:
+  random_forest:
+    primary_explainer: "shap_tree"
+    fallback_explainer: "shap_kernel"
+
+  logistic_regression:
+    primary_explainer: "shap_linear"
+    fallback_explainer: "lime_tabular"
+
+# Output Settings
+output:
+  formats: ["json", "html", "png"]
+  base_dir: "reports/explanations"
+
+# Performance
+performance:
+  cache_explanations: true
+  n_jobs: -1
+  max_memory_gb: 4

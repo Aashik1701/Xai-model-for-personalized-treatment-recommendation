@@ -1,0 +1,99 @@
+# Operational Model Suite Configuration
+
+# Model configurations for baseline models
+baseline_models:
+  logistic_regression:
+    class: LogisticRegression
+    hyperparameters:
+      C: [0.01, 0.1, 1.0, 10.0]
+      solver: ["liblinear", "lbfgs"]
+      max_iter: [1000, 2000]
+    priority: high
+
+  random_forest:
+    class: RandomForestClassifier
+    hyperparameters:
+      n_estimators: [50, 100, 200]
+      max_depth: [5, 10, 15, null]
+      min_samples_split: [2, 5, 10]
+      min_samples_leaf: [1, 2, 4]
+    priority: high
+
+  gradient_boosting:
+    class: GradientBoostingClassifier
+    hyperparameters:
+      n_estimators: [50, 100, 200]
+      learning_rate: [0.01, 0.1, 0.2]
+      max_depth: [3, 5, 7]
+    priority: medium
+
+  svm:
+    class: SVC
+    hyperparameters:
+      C: [0.1, 1.0, 10.0]
+      kernel: ["linear", "rbf"]
+      gamma: ["scale", "auto"]
+    priority: low # Computationally expensive
+
+# Ensemble configurations
+ensemble_models:
+  voting_classifier:
+    type: hard_voting
+    models: ["logistic_regression", "random_forest"]
+
+  stacking_classifier:
+    type: stacking
+    base_models: ["logistic_regression", "random_forest", "gradient_boosting"]
+    meta_model: "logistic_regression"
+
+# Evaluation settings
+evaluation:
+  cross_validation:
+    folds: 5
+    scoring: ["roc_auc", "precision", "recall", "f1"]
+
+  test_split:
+    test_size: 0.2
+    random_state: 42
+    stratify: true
+
+  calibration:
+    method: "isotonic" # or "sigmoid"
+    cv_folds: 3
+
+  fairness:
+    sensitive_features:
+      - age
+      - sex
+      - race
+      - income_level
+    thresholds:
+      demographic_parity: 0.1
+      equalized_odds: 0.1
+      equal_opportunity: 0.1
+
+# Performance thresholds
+thresholds:
+  minimum_roc_auc: 0.7
+  minimum_precision: 0.6
+  minimum_recall: 0.6
+  maximum_brier_score: 0.25
+
+# MLflow settings
+mlflow:
+  experiment_name: "operational-model-suite"
+  auto_log: true
+  log_models: true
+  register_best_models: true
+
+# Reporting
+reporting:
+  output_formats: ["json", "html", "pdf"]
+  include_plots: true
+  executive_summary: true
+
+# Production settings
+production:
+  model_size_limit_mb: 100
+  inference_time_limit_ms: 500
+  memory_limit_mb: 512

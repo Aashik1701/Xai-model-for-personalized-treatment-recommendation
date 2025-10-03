@@ -1,0 +1,165 @@
+# Personalization Engine Configuration
+
+# Patient Similarity Settings
+similarity:
+  # Embedding method for patient representation
+  embedding_method: "clinical_features" # clinical_features, pca, autoencoder, graph_neural_network
+
+  # Distance metrics for similarity calculation
+  distance_metrics:
+    - name: "euclidean"
+      weight: 0.4
+    - name: "cosine"
+      weight: 0.3
+    - name: "manhattan"
+      weight: 0.3
+
+  # Feature importance for similarity calculation
+  feature_weights:
+    demographics: 0.15
+    vitals: 0.25
+    laboratory: 0.30
+    lifestyle: 0.15
+    medical_history: 0.15
+
+  # Similarity thresholds
+  thresholds:
+    very_similar: 0.85
+    similar: 0.70
+    somewhat_similar: 0.50
+    dissimilar: 0.30
+
+# Cohort Analysis Settings
+cohorts:
+  # Clustering method for patient cohorts
+  clustering_method: "kmeans" # kmeans, hierarchical, dbscan, gaussian_mixture
+
+  # Number of clusters/cohorts
+  n_clusters: 8
+
+  # Minimum cohort size
+  min_cohort_size: 10
+
+  # Cohort characteristics to track
+  characteristics:
+    - "age_group"
+    - "risk_level"
+    - "primary_condition"
+    - "treatment_response"
+    - "comorbidities"
+
+# Treatment Recommendation Settings
+recommendations:
+  # Recommendation strategy
+  strategy: "collaborative_filtering" # collaborative_filtering, content_based, hybrid
+
+  # Number of similar patients to consider
+  k_neighbors: 10
+
+  # Treatment success threshold
+  success_threshold: 0.75
+
+  # Personalization factors
+  factors:
+    - name: "patient_similarity"
+      weight: 0.4
+    - name: "treatment_history"
+      weight: 0.3
+    - name: "outcome_prediction"
+      weight: 0.3
+
+  # Confidence scoring
+  confidence:
+    high: 0.8
+    medium: 0.6
+    low: 0.4
+
+# Patient Profile Settings
+profiles:
+  # Profile completeness requirements
+  required_fields:
+    - "age"
+    - "gender"
+    - "primary_condition"
+
+  # Optional but recommended fields
+  recommended_fields:
+    - "medical_history"
+    - "current_medications"
+    - "lifestyle_factors"
+    - "vital_signs"
+    - "lab_results"
+
+  # Profile update frequency
+  update_frequency: "monthly"
+
+  # Historical data retention
+  history_retention_months: 24
+
+# Performance Settings
+performance:
+  # Similarity cache settings
+  cache_similarity: true
+  cache_ttl_hours: 24
+
+  # Batch processing
+  batch_size: 100
+
+  # Parallel processing
+  n_jobs: -1
+
+  # Memory optimization
+  max_memory_gb: 8
+
+  # Model refresh frequency
+  model_refresh_hours: 168 # weekly
+
+# Output Settings
+output:
+  # Report formats
+  formats: ["json", "html", "csv"]
+
+  # Output directory
+  base_dir: "reports/personalization"
+
+  # Visualization settings
+  visualizations:
+    similarity_heatmap: true
+    cohort_analysis: true
+    treatment_outcomes: true
+    patient_journey: true
+
+# Evaluation Settings
+evaluation:
+  # Cross-validation settings
+  cv_folds: 5
+
+  # Metrics to track
+  metrics:
+    - "recommendation_accuracy"
+    - "treatment_success_rate"
+    - "patient_satisfaction"
+    - "cohort_stability"
+
+  # Evaluation frequency
+  evaluation_frequency: "weekly"
+
+  # Benchmarking
+  baseline_methods: ["random", "most_popular", "clinical_guidelines"]
+
+# Privacy and Security
+privacy:
+  # De-identification settings
+  deidentify_patient_ids: true
+
+  # Data masking
+  mask_sensitive_fields: true
+
+  # Audit logging
+  audit_log: true
+
+  # Consent management
+  require_consent: true
+
+  # Data retention policies
+  retention_policy: "gdpr_compliant"
