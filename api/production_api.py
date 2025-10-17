@@ -393,18 +393,49 @@ async def predict(request: PredictionRequest):
             try:
                 logger.info(f"[{trace_id}] Generating SHAP explanation...")
 
-                # Create SHAP explainer (cached per model)
+                # Try fast TreeExplainer first, then fall back to KernelExplainer for multiclass
                 cache_key = f"shap_{request.model_name}"
-                if cache_key not in model_cache:
-                    # Get the actual sklearn model from the MLflow wrapper
-                    sklearn_model = model._model_impl.sklearn_model
-                    explainer = shap.TreeExplainer(sklearn_model)
-                    model_cache[cache_key] = explainer
-                else:
-                    explainer = model_cache[cache_key]
+                shap_values_raw = None
+                sklearn_model = model._model_impl.sklearn_model
 
-                # Calculate SHAP values
-                shap_values_raw = explainer.shap_values(input_df)
+                try:
+                    # Create SHAP explainer (cached per model)
+                    if cache_key not in model_cache:
+                        explainer = shap.TreeExplainer(sklearn_model)
+                        model_cache[cache_key] = explainer
+                    else:
+                        explainer = model_cache[cache_key]
+
+                    # Calculate SHAP values
+                    shap_values_raw = explainer.shap_values(input_df)
+                    explainer_type = "TreeExplainer"
+                except Exception as te:
+                    logger.warning(
+                        "TreeExplainer failed, attempting KernelExplainer "
+                        f"fallback: {te}"
+                    )
+                    # KernelExplainer fallback (handles multiclass but slower)
+                    try:
+                        # Build a more diverse background dataset
+                        x0 = input_df.values[0]
+                        rng = np.random.default_rng(42)
+                        # Use larger scale for more variance (20% noise)
+                        scale = np.maximum(np.abs(x0) * 0.2, 0.1)
+                        background = np.vstack(
+                            [x0 + rng.normal(0, scale) for _ in range(50)]
+                        )
+
+                        kernel_explainer = shap.KernelExplainer(
+                            sklearn_model.predict_proba, background
+                        )
+                        # Increase nsamples for better SHAP estimates
+                        shap_values_raw = kernel_explainer.shap_values(
+                            input_df.values, nsamples=200
+                        )
+                        explainer_type = "KernelExplainer"
+                    except Exception as ke:
+                        logger.warning(f"KernelExplainer fallback failed: {ke}")
+                        raise
 
                 # Handle multi-output (binary classification returns list of 2)
                 if isinstance(shap_values_raw, list):
@@ -435,8 +466,11 @@ async def predict(request: PredictionRequest):
                     if shap_values.shape[1] == 2:
                         shap_values = shap_values[:, 1]  # Positive class
                     else:
-                        # For multiclass, use the predicted class
+                        # For multiclass, use the predicted class (ensure valid index)
                         pred_class = int(prediction[0])
+                        # Classes may be 1-indexed (1-10) but array is 0-indexed (0-9)
+                        if pred_class >= shap_values.shape[1]:
+                            pred_class = shap_values.shape[1] - 1
                         shap_values = shap_values[:, pred_class]
 
                 # Verify final shape
@@ -471,7 +505,7 @@ async def predict(request: PredictionRequest):
                 )
 
                 explanation_result = {
-                    "method": "SHAP",
+                    "method": f"SHAP ({explainer_type})",
                     "top_features": dict(sorted_features[:5]),
                     "total_features": len(feature_importance),
                 }
@@ -480,7 +514,55 @@ async def predict(request: PredictionRequest):
 
             except Exception as e:
                 logger.warning(f"⚠️ SHAP explanation failed: {e}")
-                explanation_result = {"error": "Explanation generation failed"}
+                # As a last resort, attempt LIME to still provide explanations
+                try:
+                    from lime.lime_tabular import LimeTabularExplainer
+
+                    sklearn_model = model._model_impl.sklearn_model
+                    x0 = input_df.values[0]
+                    rng = np.random.default_rng(7)
+                    scale = np.maximum(np.abs(x0) * 0.05, 0.01)
+                    lime_background = np.vstack(
+                        [x0 + rng.normal(0, scale) for _ in range(100)]
+                    )
+
+                    lime_explainer = LimeTabularExplainer(
+                        training_data=lime_background,
+                        feature_names=list(input_df.columns),
+                        mode="classification",
+                    )
+                    exp = lime_explainer.explain_instance(
+                        data_row=x0,
+                        predict_fn=sklearn_model.predict_proba,
+                        num_features=min(10, len(input_df.columns)),
+                    )
+                    # Map to top_features structure
+                    feat_map = {}
+                    feat_order = []
+                    for feat, weight in exp.as_list():
+                        name = feat.split()[0]
+                        if name in input_df.columns and name not in feat_map:
+                            val = float(input_df[name].values[0])
+                            feat_map[name] = {
+                                "shap_value": float(weight),  # use LIME weight
+                                "feature_value": val,
+                                "impact": "positive" if weight > 0 else "negative",
+                                "magnitude": abs(float(weight)),
+                            }
+                            feat_order.append(name)
+
+                    # Sort by magnitude similar to SHAP
+                    sorted_features = sorted(
+                        feat_map.items(), key=lambda x: x[1]["magnitude"], reverse=True
+                    )
+                    explanation_result = {
+                        "method": "LIME (fallback)",
+                        "top_features": dict(sorted_features[:5]),
+                        "total_features": len(feat_map),
+                    }
+                except Exception as le:
+                    logger.warning(f"LIME fallback also failed: {le}")
+                    explanation_result = {"error": "Explanation generation failed"}
 
         # Generate personalization if requested
         personalization_result = None
@@ -606,7 +688,7 @@ async def predict_batch(
             ):
                 probabilities = model._model_impl.python_model.predict_proba(df)
                 df["confidence"] = probabilities.max(axis=1)
-        except:
+        except Exception:
             df["confidence"] = 1.0
 
         df["prediction"] = predictions
@@ -676,21 +758,41 @@ async def explain_prediction(request: ExplainRequest):
 
         if request.explanation_type.lower() == "shap":
             try:
-                # Create SHAP explainer (cached per model)
+                # Try fast TreeExplainer, fallback to KernelExplainer for multiclass
                 cache_key = f"shap_{request.model_name}"
-                if cache_key not in model_cache:
-                    # Get the actual sklearn model from the MLflow wrapper
-                    sklearn_model = model._model_impl.sklearn_model
-                    explainer = shap.TreeExplainer(sklearn_model)
-                    model_cache[cache_key] = explainer
-                    logger.info(
-                        f"✅ Created new SHAP explainer for {request.model_name}"
-                    )
-                else:
-                    explainer = model_cache[cache_key]
+                shap_values_raw = None
+                sklearn_model = model._model_impl.sklearn_model
+                explainer_type = "TreeExplainer"
 
-                # Calculate SHAP values
-                shap_values_raw = explainer.shap_values(input_df)
+                try:
+                    if cache_key not in model_cache:
+                        explainer = shap.TreeExplainer(sklearn_model)
+                        model_cache[cache_key] = explainer
+                        logger.info(
+                            f"✅ Created new SHAP explainer for {request.model_name}"
+                        )
+                    else:
+                        explainer = model_cache[cache_key]
+
+                    shap_values_raw = explainer.shap_values(input_df)
+                except Exception as te:
+                    logger.warning(
+                        f"TreeExplainer failed, attempting KernelExplainer fallback: {te}"
+                    )
+                    # KernelExplainer fallback with more diverse background
+                    x0 = input_df.values[0]
+                    rng = np.random.default_rng(101)
+                    scale = np.maximum(np.abs(x0) * 0.2, 0.1)
+                    background = np.vstack(
+                        [x0 + rng.normal(0, scale) for _ in range(50)]
+                    )
+                    kernel_explainer = shap.KernelExplainer(
+                        sklearn_model.predict_proba, background
+                    )
+                    shap_values_raw = kernel_explainer.shap_values(
+                        input_df.values, nsamples=200
+                    )
+                    explainer_type = "KernelExplainer"
 
                 # Handle multi-output (binary classification returns list of 2)
                 if isinstance(shap_values_raw, list):
@@ -719,8 +821,14 @@ async def explain_prediction(request: ExplainRequest):
                     if shap_values.shape[1] == 2:
                         shap_values = shap_values[:, 1]  # Positive class
                     else:
-                        # For multiclass, use max probability class
-                        shap_values = shap_values[:, 0]
+                        # For multiclass, take the class with highest probability
+                        # Get prediction to determine which class to explain
+                        pred = model.predict(input_df)
+                        pred_class = int(pred[0])
+                        # Ensure valid index (0-based)
+                        if pred_class >= shap_values.shape[1]:
+                            pred_class = shap_values.shape[1] - 1
+                        shap_values = shap_values[:, pred_class]
 
                 # Calculate feature importance
                 feature_importance = {}
@@ -754,7 +862,7 @@ async def explain_prediction(request: ExplainRequest):
                         base_value = float(ev)
 
                 explanation_result = {
-                    "method": "SHAP (TreeExplainer)",
+                    "method": f"SHAP ({explainer_type})",
                     "feature_importance": dict(sorted_features[:10]),  # Top 10 features
                     "base_value": base_value,
                     "prediction_impact": float(np.sum(shap_values)),
@@ -766,7 +874,7 @@ async def explain_prediction(request: ExplainRequest):
                     ],
                 }
 
-                logger.info(f"✅ SHAP explanation generated successfully")
+                logger.info("✅ SHAP explanation generated successfully")
 
             except Exception as e:
                 logger.error(f"❌ SHAP explanation failed: {e}", exc_info=True)
@@ -783,10 +891,16 @@ async def explain_prediction(request: ExplainRequest):
                 # Get sklearn model
                 sklearn_model = model._model_impl.sklearn_model
 
-                # Create LIME explainer
-                # Note: LIME needs training data statistics, using simple approach
+                # Create LIME explainer with synthetic background to avoid zero weights
+                x0 = input_df.values[0]
+                rng = np.random.default_rng(13)
+                scale = np.maximum(np.abs(x0) * 0.05, 0.01)
+                lime_background = np.vstack(
+                    [x0 + rng.normal(0, scale) for _ in range(200)]
+                )
+
                 lime_explainer = LimeTabularExplainer(
-                    training_data=input_df.values,
+                    training_data=lime_background,
                     feature_names=list(input_df.columns),
                     mode="classification",
                 )
@@ -795,7 +909,7 @@ async def explain_prediction(request: ExplainRequest):
                 exp = lime_explainer.explain_instance(
                     data_row=input_df.values[0],
                     predict_fn=sklearn_model.predict_proba,
-                    num_features=10,
+                    num_features=min(10, len(input_df.columns)),
                 )
 
                 # Extract feature importance
@@ -845,7 +959,10 @@ async def explain_prediction(request: ExplainRequest):
         else:
             raise HTTPException(
                 status_code=400,
-                detail=f"Unknown explanation type: {request.explanation_type}. Use 'shap' or 'lime'",
+                detail=(
+                    f"Unknown explanation type: {request.explanation_type}. "
+                    "Use 'shap' or 'lime'"
+                ),
             )
 
         # Add personalization if requested
@@ -909,8 +1026,8 @@ async def personalize_treatment(request: PersonalizeRequest):
 
         logger.info(f"[{trace_id}] Finding similar patients for {request.model_name}")
 
-        # Prepare patient data
-        input_df = pd.DataFrame([request.patient_data.features])
+        # Prepare patient data summary (reserved for future use)
+        _feature_count = len(request.patient_data.features)
 
         # TODO: Full personalization integration
         # For now, return structured placeholder
