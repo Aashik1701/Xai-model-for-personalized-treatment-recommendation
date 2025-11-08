@@ -1,5 +1,6 @@
 # Core ML and Data Science Libraries
-numpy>=1.21.0
+# Pin NumPy to 1.26.x to avoid runtime incompatibilities with SHAP/Numba on macOS
+numpy==1.26.4
 pandas>=1.3.0
 scikit-learn>=1.0.0
 scipy>=1.7.0
@@ -7,8 +8,11 @@ matplotlib>=3.4.0
 seaborn>=0.11.0
 
 # Explainable AI Libraries
-shap>=0.41.0
-lime>=0.2.0.1
+# Pin versions known to work with NumPy 1.26.x
+shap==0.44.1
+lime==0.2.0.1
+numba==0.59.1
+scikit-image==0.22.0
 
 # MLOps and Experiment Tracking
 mlflow>=1.28.0

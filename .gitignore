@@ -149,3 +149,5 @@ training_pipeline_output.log
 
 # Notebooks with outputs (clear before committing)
 notebooks/**/output/
+/paper_visualizations/outputs/
+/paper_visualizations

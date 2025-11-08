@@ -1,0 +1,69 @@
+/Users/mohammedaashik/Documents/PROJECT/Xai-model-for-personalized-treatment-recommendation/venv/lib/python3.9/site-packages/urllib3/__init__.py:35: NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+, currently the 'ssl' module is compiled with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020
+  warnings.warn(
+2025/10/31 00:00:49 INFO mlflow.store.db.utils: Creating initial MLflow database tables...
+2025/10/31 00:00:49 INFO mlflow.store.db.utils: Updating database tables
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+2025/10/31 00:00:49 INFO mlflow.store.db.utils: Creating initial MLflow database tables...
+2025/10/31 00:00:49 INFO mlflow.store.db.utils: Updating database tables
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+[2025-10-31 00:00:49 +0530] [39058] [INFO] Starting gunicorn 23.0.0
+[2025-10-31 00:00:49 +0530] [39058] [INFO] Listening at: http://0.0.0.0:5000 (39058)
+[2025-10-31 00:00:49 +0530] [39058] [INFO] Using worker: sync
+[2025-10-31 00:00:49 +0530] [39059] [INFO] Booting worker with pid: 39059
+[2025-10-31 00:00:50 +0530] [39060] [INFO] Booting worker with pid: 39060
+/Users/mohammedaashik/Documents/PROJECT/Xai-model-for-personalized-treatment-recommendation/venv/lib/python3.9/site-packages/urllib3/__init__.py:35: NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+, currently the 'ssl' module is compiled with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020
+  warnings.warn(
+[2025-10-31 00:00:50 +0530] [39061] [INFO] Booting worker with pid: 39061
+/Users/mohammedaashik/Documents/PROJECT/Xai-model-for-personalized-treatment-recommendation/venv/lib/python3.9/site-packages/urllib3/__init__.py:35: NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+, currently the 'ssl' module is compiled with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020
+  warnings.warn(
+[2025-10-31 00:00:50 +0530] [39062] [INFO] Booting worker with pid: 39062
+/Users/mohammedaashik/Documents/PROJECT/Xai-model-for-personalized-treatment-recommendation/venv/lib/python3.9/site-packages/urllib3/__init__.py:35: NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+, currently the 'ssl' module is compiled with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020
+  warnings.warn(
+/Users/mohammedaashik/Documents/PROJECT/Xai-model-for-personalized-treatment-recommendation/venv/lib/python3.9/site-packages/urllib3/__init__.py:35: NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+, currently the 'ssl' module is compiled with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020
+  warnings.warn(
+2025/10/31 00:01:14 INFO mlflow.store.db.utils: Creating initial MLflow database tables...
+2025/10/31 00:01:14 INFO mlflow.store.db.utils: Updating database tables
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+2025/10/31 00:06:42 INFO mlflow.store.db.utils: Creating initial MLflow database tables...
+2025/10/31 00:06:42 INFO mlflow.store.db.utils: Updating database tables
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+2025/10/31 00:09:39 INFO mlflow.store.db.utils: Creating initial MLflow database tables...
+2025/10/31 00:09:39 INFO mlflow.store.db.utils: Updating database tables
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+2025/10/31 00:09:47 INFO mlflow.store.db.utils: Creating initial MLflow database tables...
+2025/10/31 00:09:47 INFO mlflow.store.db.utils: Updating database tables
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+2025/10/31 00:09:47 INFO mlflow.store.db.utils: Creating initial MLflow database tables...
+2025/10/31 00:09:47 INFO mlflow.store.db.utils: Updating database tables
+2025/10/31 00:09:47 INFO mlflow.store.db.utils: Creating initial MLflow database tables...
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+2025/10/31 00:09:47 INFO mlflow.store.db.utils: Updating database tables
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+2025/10/31 00:09:48 INFO mlflow.store.db.utils: Creating initial MLflow database tables...
+2025/10/31 00:09:48 INFO mlflow.store.db.utils: Updating database tables
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+INFO  [alembic.runtime.migration] Context impl SQLiteImpl.
+INFO  [alembic.runtime.migration] Will assume non-transactional DDL.
+[2025-10-31 20:48:01 +0530] [39058] [INFO] Handling signal: term
+[2025-10-31 20:48:01 +0530] [39061] [INFO] Worker exiting (pid: 39061)
+[2025-10-31 20:48:01 +0530] [39062] [INFO] Worker exiting (pid: 39062)
+[2025-10-31 20:48:01 +0530] [39059] [INFO] Worker exiting (pid: 39059)
+[2025-10-31 20:48:01 +0530] [39060] [INFO] Worker exiting (pid: 39060)
+[2025-10-31 20:48:03 +0530] [39058] [INFO] Shutting down: Master

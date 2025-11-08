@@ -27,6 +27,8 @@ import uuid
 import io
 import sys
 from pathlib import Path
+import os
+import tempfile
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -177,6 +179,279 @@ START_TIME = time.time()
 explainability_toolkit = None
 personalization_engine = None
 model_cache = {}  # Cache for loaded models and explainers
+# Per-model background cache to improve SHAP stability
+BACKGROUND_CACHE: Dict[str, List[np.ndarray]] = {}
+# Optional persisted background per model (loaded from MLflow artifacts or disk)
+BACKGROUND_ARTIFACT_CACHE: Dict[str, np.ndarray] = {}
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _build_background_from_input(
+    input_df: pd.DataFrame, n: int = 128, scale: float = 0.2
+) -> np.ndarray:
+    """Create a synthetic background distribution around the input.
+
+    This helps SHAP approximate expectations when we don't have training data on hand.
+    Args:
+        input_df: single-row DataFrame of the input features
+        n: number of background samples
+        scale: relative noise level (as a fraction of |x|); min absolute noise 0.1
+    Returns:
+        ndarray of shape (n, n_features)
+    """
+    x0 = input_df.values[0]
+    rng = np.random.default_rng(42)
+    noise_scale = np.maximum(np.abs(x0) * scale, 0.1)
+    background = np.vstack([x0 + rng.normal(0, noise_scale) for _ in range(n)])
+    return background
+
+
+def _align_features(input_df: pd.DataFrame, sklearn_model: Any) -> pd.DataFrame:
+    """Align input columns to model's training feature order if available.
+
+    - Reorders columns to match feature_names_in_
+    - Drops unknown columns
+    - Fills any missing expected columns with 0.0
+    """
+    try:
+        if hasattr(sklearn_model, "feature_names_in_"):
+            expected = list(sklearn_model.feature_names_in_)
+            # Keep only expected features
+            df = input_df.reindex(columns=expected, fill_value=0.0)
+            # Ensure numeric dtype
+            return df.astype(float)
+    except Exception:
+        pass
+    return input_df
+
+
+def _validate_input_features(input_df: pd.DataFrame, sklearn_model: Any) -> None:
+    """Validate that the request includes the full expected feature set.
+
+    Raises HTTPException(400) with details on mismatch.
+    """
+    expected: Optional[List[str]] = None
+    # If model is a pipeline, try to get expected input from preprocessor
+    try:
+        if hasattr(sklearn_model, "named_steps"):
+            steps = getattr(sklearn_model, "named_steps", {})
+            pre = steps.get("preprocessor")
+            if pre is not None and hasattr(pre, "feature_names_in_"):
+                expected = list(pre.feature_names_in_)
+    except Exception:
+        expected = None
+
+    # Fallback to model.feature_names_in_
+    if expected is None and hasattr(sklearn_model, "feature_names_in_"):
+        try:
+            expected = list(sklearn_model.feature_names_in_)
+        except Exception:
+            expected = None
+
+    if expected is None:
+        # Fall back to n_features_in_ if available
+        try:
+            if hasattr(sklearn_model, "n_features_in_"):
+                expected_count = int(getattr(sklearn_model, "n_features_in_"))
+                provided_count = len(input_df.columns)
+                if provided_count != expected_count:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            "Feature count mismatch. "
+                            f"expected={expected_count}, got={provided_count}"
+                        ),
+                    )
+                return
+        except Exception:
+            pass
+        # No schema metadata available; skip strict check
+        return
+
+    provided = list(input_df.columns)
+    missing = [c for c in expected if c not in provided]
+    extra = [c for c in provided if c not in expected]
+    if missing or extra or (len(provided) != len(expected)):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Feature schema mismatch. "
+                f"expected={len(expected)}, got={len(provided)}; "
+                f"missing={missing}; extra={extra}"
+            ),
+        )
+
+
+def _get_pipeline_parts(sklearn_model: Any):
+    """Return (preprocessor, classifier, is_pipeline) for sklearn pipelines."""
+    try:
+        if hasattr(sklearn_model, "named_steps") and isinstance(
+            getattr(sklearn_model, "named_steps"), dict
+        ):
+            steps = sklearn_model.named_steps
+            pre = steps.get("preprocessor")
+            clf = steps.get("classifier")
+            if clf is None and len(steps) > 0:
+                # Assume last step is the estimator
+                last_key = list(steps.keys())[-1]
+                clf = steps[last_key]
+            return pre, clf, True
+    except Exception:
+        pass
+    return None, sklearn_model, False
+
+
+def _load_background_artifact_for_model(
+    model_name: str, expected_cols: Optional[List[str]] = None, max_rows: int = 256
+) -> Optional[np.ndarray]:
+    """Try to load a persisted background from MLflow artifacts for this model.
+
+    Looks for common file names like background.npy or background.csv (optionally
+    under a background/ subfolder) in the run artifacts of the Production version.
+    """
+    try:
+        client = MlflowClient()
+        versions = client.search_model_versions(f"name='{model_name}'")
+        prod = next((v for v in versions if v.current_stage == "Production"), None)
+        if not prod or not getattr(prod, "run_id", None):
+            return None
+
+        run_id = prod.run_id
+        candidates = [
+            "background.npy",
+            "background/background.npy",
+            "background.csv",
+            "background/background.csv",
+            "background.parquet",
+            "background/background.parquet",
+        ]
+
+        tmpdir = tempfile.mkdtemp(prefix="bgdl_")
+        local_path = None
+
+        # Try client.download_artifacts first (compatible across mlflow versions)
+        for path in candidates:
+            try:
+                res = client.download_artifacts(run_id, path, tmpdir)
+                if res and os.path.exists(res):
+                    local_path = res
+                    break
+            except Exception:
+                continue
+
+        if local_path is None:
+            return None
+
+        arr: Optional[np.ndarray] = None
+        if local_path.endswith(".npy"):
+            arr = np.load(local_path)
+        elif local_path.endswith(".csv"):
+            df = pd.read_csv(local_path)
+            if expected_cols:
+                df = df.reindex(columns=expected_cols, fill_value=0.0)
+            arr = df.values
+        elif local_path.endswith(".parquet"):
+            df = pd.read_parquet(local_path)
+            if expected_cols:
+                df = df.reindex(columns=expected_cols, fill_value=0.0)
+            arr = df.values
+
+        if arr is None or arr.ndim != 2 or arr.shape[0] == 0:
+            return None
+
+        # Subsample for performance
+        if arr.shape[0] > max_rows:
+            rng = np.random.default_rng(123)
+            idx = rng.choice(arr.shape[0], size=max_rows, replace=False)
+            arr = arr[idx]
+
+        BACKGROUND_ARTIFACT_CACHE[model_name] = arr
+        logger.info(f"Loaded background artifact for {model_name}: shape={arr.shape}")
+        return arr
+    except Exception:
+        return None
+
+
+def _update_background_cache(
+    model_name: str, input_df: pd.DataFrame, max_keep: int = 512
+) -> None:
+    """Append input to a per-model background cache."""
+    try:
+        x0 = np.array(input_df.values[0], dtype=float)
+        arr = BACKGROUND_CACHE.get(model_name, [])
+        arr.append(x0)
+        if len(arr) > max_keep:
+            arr[:] = arr[-max_keep:]
+        BACKGROUND_CACHE[model_name] = arr
+    except Exception:
+        pass
+
+
+def _get_background_for_model(model_name: str, input_df: pd.DataFrame) -> np.ndarray:
+    """Return representative background for SHAP."""
+    # Prefer a persisted artifact background if available or loadable
+    if (
+        model_name in BACKGROUND_ARTIFACT_CACHE
+        and BACKGROUND_ARTIFACT_CACHE[model_name] is not None
+    ):
+        arr_art = BACKGROUND_ARTIFACT_CACHE[model_name]
+        return arr_art
+
+    # Try to load from MLflow artifacts on first use
+    loaded = _load_background_artifact_for_model(
+        model_name, expected_cols=list(input_df.columns)
+    )
+    if loaded is not None:
+        return loaded
+
+    # Else, use cached recent inputs with small jitter
+    arr = BACKGROUND_CACHE.get(model_name, [])
+    if len(arr) >= 64:
+        rng = np.random.default_rng(123)
+        sample_sz = min(192, len(arr))
+        idx = rng.choice(len(arr), size=sample_sz, replace=False)
+        chosen = np.stack([arr[i] for i in idx], axis=0)
+        noise = np.maximum(np.abs(chosen) * 0.1, 0.05)
+        jitter = rng.normal(0, noise)
+        return chosen + jitter
+    return _build_background_from_input(input_df, n=160, scale=0.25)
+
+
+def _extract_sklearn_model_from_pyfunc(pyfunc_model: Any):
+    """Return an sklearn estimator from a loaded pyfunc model if available.
+
+    This handles cases where the pyfunc was created via a PythonModel wrapper
+    that holds the true sklearn estimator under `python_model.model`.
+    """
+    try:
+        impl = getattr(pyfunc_model, "_model_impl", None)
+        if impl is None:
+            return None
+        skl = getattr(impl, "sklearn_model", None)
+        if skl is not None:
+            return skl
+        py = getattr(impl, "python_model", None)
+        if py is not None and hasattr(py, "model"):
+            return py.model
+    except Exception:
+        return None
+    return None
+
+
+# For cohort semantics, specify whether class 1 means "higher risk" (True)
+# or "favorable" (False). Adjust here for your registered models.
+RISK_POSITIVE_CLASS_MEANS_HIGH_RISK: Dict[str, bool] = {
+    "HeartDisease": True,
+    "BreastCancer": True,
+    "ISICSkinCancer": True,
+    "SyntheaLongitudinal": True,
+    # For DrugReviews, class 1 often means high rating (favorable), so invert
+    "DrugReviews": False,
+}
 
 
 @app.on_event("startup")
@@ -221,13 +496,11 @@ async def startup_event():
 
     logger.info("=" * 80)
     logger.info("🎯 API Ready!")
-    logger.info(f"   - Predictions: ✅ Enabled")
-    logger.info(
-        f"   - Explainability: {'✅ Enabled' if explainability_toolkit else '❌ Disabled'}"
-    )
-    logger.info(
-        f"   - Personalization: {'✅ Enabled' if personalization_engine else '❌ Disabled'}"
-    )
+    logger.info("   - Predictions: ✅ Enabled")
+    explain_status = "✅ Enabled" if explainability_toolkit else "❌ Disabled"
+    logger.info(f"   - Explainability: {explain_status}")
+    pers_status = "✅ Enabled" if personalization_engine else "❌ Disabled"
+    logger.info(f"   - Personalization: {pers_status}")
     logger.info("=" * 80)
 
 
@@ -249,6 +522,21 @@ def load_model(model_name: str, stage: str = "Production"):
 
         logger.info(f"Model loaded in {load_time:.2f}s")
 
+        # If the pyfunc model wraps a python_model that itself contains a sklearn estimator
+        # (for example our pyfunc wrapper around joblib dicts), normalize by exposing
+        # sklearn_model on the internal impl so downstream code (which expects
+        # model._model_impl.sklearn_model) continues to work.
+        try:
+            impl = getattr(model, "_model_impl", None)
+            if impl is not None and getattr(impl, "sklearn_model", None) is None:
+                py = getattr(impl, "python_model", None)
+                if py is not None and hasattr(py, "model"):
+                    impl.sklearn_model = py.model
+                    logger.info(
+                        "Normalized pyfunc model: exposed sklearn_model from python_model.model"
+                    )
+        except Exception:
+            pass
         # Cache the model
         MODEL_CACHE[cache_key] = {
             "model": model,
@@ -336,11 +624,51 @@ async def list_models():
         raise HTTPException(status_code=500, detail=f"Failed to list models: {str(e)}")
 
 
+@app.get("/_debug/model_info")
+async def debug_model_info(model_name: str):
+    """Debug endpoint: return introspection info for a registered model (non-production use).
+
+    Returns the top-level type, whether pyfunc is present, and attributes of the underlying
+    python_model/sklearn estimator when available.
+    """
+    try:
+        model_data = load_model(model_name)
+        model = model_data["model"]
+        info = {"model_name": model_name, "top_type": str(type(model))}
+
+        # Inspect pyfunc internals if available
+        impl = getattr(model, "_model_impl", None)
+        info["has__model_impl"] = impl is not None
+        if impl is not None:
+            py = getattr(impl, "python_model", None)
+            skl = getattr(impl, "sklearn_model", None)
+            info["has_python_model"] = py is not None
+            info["has_sklearn_model"] = skl is not None
+            info["python_model_type"] = str(type(py)) if py is not None else None
+            info["sklearn_model_type"] = str(type(skl)) if skl is not None else None
+
+            # if python_model has 'model' attribute, show its type
+            if py is not None and hasattr(py, "model"):
+                try:
+                    info["python_model.inner_model_type"] = str(type(py.model))
+                    info["python_model.inner_has_predict"] = hasattr(
+                        py.model, "predict"
+                    )
+                except Exception:
+                    pass
+
+        return info
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Debug inspect failed: {e}")
+
+
 @app.post("/predict", response_model=PredictionResponse)
 async def predict(request: PredictionRequest):
     """Make a prediction for a single patient"""
     trace_id = str(uuid.uuid4())
-    start_time = time.time()
+    # start_time reserved (not used): using per-step timers below
 
     try:
         # Load model
@@ -349,6 +677,27 @@ async def predict(request: PredictionRequest):
 
         # Prepare input data
         input_df = pd.DataFrame([request.patient_data.features])
+        # Validate and align feature schema before prediction
+        try:
+            if hasattr(model, "_model_impl") and hasattr(
+                model._model_impl, "sklearn_model"
+            ):
+                sk = model._model_impl.sklearn_model
+                _validate_input_features(input_df, sk)
+                input_df = _align_features(input_df, sk)
+        except HTTPException:
+            raise
+        except Exception:
+            # If schema metadata is unavailable, proceed (model may still accept)
+            pass
+        # Align feature order to training if available
+        try:
+            if hasattr(model, "_model_impl") and hasattr(
+                model._model_impl, "sklearn_model"
+            ):
+                input_df = _align_features(input_df, model._model_impl.sklearn_model)
+        except Exception:
+            pass
 
         # Make prediction
         prediction_start = time.time()
@@ -393,97 +742,101 @@ async def predict(request: PredictionRequest):
             try:
                 logger.info(f"[{trace_id}] Generating SHAP explanation...")
 
-                # Try fast TreeExplainer first, then fall back to KernelExplainer for multiclass
-                cache_key = f"shap_{request.model_name}"
-                shap_values_raw = None
                 sklearn_model = model._model_impl.sklearn_model
+                # Validate full feature schema (strict) and align ordering
+                _validate_input_features(input_df, sklearn_model)
+                input_df = _align_features(input_df, sklearn_model)
+                cache_key = f"shap_explainer_{request.model_name}"
 
-                try:
-                    # Create SHAP explainer (cached per model)
-                    if cache_key not in model_cache:
-                        explainer = shap.TreeExplainer(sklearn_model)
-                        model_cache[cache_key] = explainer
-                    else:
-                        explainer = model_cache[cache_key]
+                # Determine if model is a sklearn Pipeline
+                pre, clf, is_pipe = _get_pipeline_parts(sklearn_model)
 
-                    # Calculate SHAP values
-                    shap_values_raw = explainer.shap_values(input_df)
-                    explainer_type = "TreeExplainer"
-                except Exception as te:
-                    logger.warning(
-                        "TreeExplainer failed, attempting KernelExplainer "
-                        f"fallback: {te}"
-                    )
-                    # KernelExplainer fallback (handles multiclass but slower)
-                    try:
-                        # Build a more diverse background dataset
-                        x0 = input_df.values[0]
-                        rng = np.random.default_rng(42)
-                        # Use larger scale for more variance (20% noise)
-                        scale = np.maximum(np.abs(x0) * 0.2, 0.1)
-                        background = np.vstack(
-                            [x0 + rng.normal(0, scale) for _ in range(50)]
-                        )
-
-                        kernel_explainer = shap.KernelExplainer(
-                            sklearn_model.predict_proba, background
-                        )
-                        # Increase nsamples for better SHAP estimates
-                        shap_values_raw = kernel_explainer.shap_values(
-                            input_df.values, nsamples=200
-                        )
-                        explainer_type = "KernelExplainer"
-                    except Exception as ke:
-                        logger.warning(f"KernelExplainer fallback failed: {ke}")
-                        raise
-
-                # Handle multi-output (binary classification returns list of 2)
-                if isinstance(shap_values_raw, list):
-                    # For binary classification, use positive class (index 1)
-                    shap_values = (
-                        shap_values_raw[1]
-                        if len(shap_values_raw) > 1
-                        else shap_values_raw[0]
-                    )
+                if is_pipe and pre is not None:
+                    # Build background in original feature space then transform
+                    bg_orig = _get_background_for_model(request.model_name, input_df)
+                    bg_df = pd.DataFrame(bg_orig, columns=list(input_df.columns))
+                    bg_trans = pre.transform(bg_df)
+                    masker = shap.maskers.Independent(bg_trans)
+                    model_fn = clf.predict_proba
                 else:
-                    shap_values = shap_values_raw
-
-                # Convert to numpy array and ensure proper shape
-                shap_values = np.array(shap_values)
-
-                # For single sample, should be shape (n_features,)
-                # If shape is (1, n_features), squeeze first dimension
-                if len(shap_values.shape) > 1 and shap_values.shape[0] == 1:
-                    shap_values = shap_values[0]
-
-                # For binary classification: (n_features, 2) -> take class 1
-                # For multiclass: (n_features, n_classes) -> take predicted class
-                if len(shap_values.shape) == 2 and shap_values.shape[0] == len(
-                    input_df.columns
-                ):
-                    # Shape is (n_features, n_classes)
-                    # Use positive class (index 1) for binary, or max class
-                    if shap_values.shape[1] == 2:
-                        shap_values = shap_values[:, 1]  # Positive class
-                    else:
-                        # For multiclass, use the predicted class (ensure valid index)
-                        pred_class = int(prediction[0])
-                        # Classes may be 1-indexed (1-10) but array is 0-indexed (0-9)
-                        if pred_class >= shap_values.shape[1]:
-                            pred_class = shap_values.shape[1] - 1
-                        shap_values = shap_values[:, pred_class]
-
-                # Verify final shape
-                logger.info(
-                    f"Final SHAP shape: {shap_values.shape}, "
-                    f"Features: {len(input_df.columns)}"
-                )
-
-                if len(shap_values) != len(input_df.columns):
-                    raise ValueError(
-                        f"SHAP values length {len(shap_values)} != "
-                        f"features {len(input_df.columns)}"
+                    # Build a robust background and masker in original space
+                    background = _build_background_from_input(
+                        input_df, n=160, scale=0.25
                     )
+                    masker = shap.maskers.Independent(background)
+                    model_fn = sklearn_model.predict_proba
+
+                # Create/cache a general-purpose explainer
+                if cache_key not in model_cache:
+                    explainer = shap.Explainer(
+                        model_fn, masker, algorithm="auto", link="logit"
+                    )
+                    model_cache[cache_key] = explainer
+                    explainer_type = "Explainer(auto/logit)"
+                else:
+                    explainer = model_cache[cache_key]
+                    explainer_type = "Explainer(cache)"
+
+                if is_pipe and pre is not None:
+                    X_trans = pre.transform(input_df)
+                    sv_obj = explainer(X_trans)
+                else:
+                    sv_obj = explainer(input_df.values)
+                # sv_obj.values shape: (n_samples, n_features, n_outputs)
+                values = sv_obj.values
+
+                # Determine class index to explain (predicted class by default)
+                class_index = None
+                try:
+                    proba_tmp = (
+                        sklearn_model.predict_proba(input_df)[0]
+                        if not is_pipe
+                        else sklearn_model.predict_proba(input_df)[0]
+                    )
+                    class_index = int(np.argmax(proba_tmp))
+                except Exception:
+                    class_index = 0
+
+                if values.ndim == 3:
+                    shap_values = values[0, :, class_index]
+                elif values.ndim == 2:
+                    shap_values = values[0]
+                else:
+                    shap_values = values
+
+                # If all zeros, try broadening background once
+                if np.allclose(shap_values, 0, atol=1e-9):
+                    if is_pipe and pre is not None:
+                        bg_orig = _build_background_from_input(
+                            input_df, n=256, scale=0.5
+                        )
+                        bg_df = pd.DataFrame(bg_orig, columns=list(input_df.columns))
+                        bg_trans = pre.transform(bg_df)
+                        masker = shap.maskers.Independent(bg_trans)
+                        explainer_retry = shap.Explainer(
+                            clf.predict_proba, masker, algorithm="auto", link="logit"
+                        )
+                        X_trans = pre.transform(input_df)
+                        sv_retry = explainer_retry(X_trans)
+                    else:
+                        background = _build_background_from_input(
+                            input_df, n=256, scale=0.5
+                        )
+                        masker = shap.maskers.Independent(background)
+                        explainer_retry = shap.Explainer(
+                            sklearn_model.predict_proba,
+                            masker,
+                            algorithm="auto",
+                            link="logit",
+                        )
+                        sv_retry = explainer_retry(input_df.values)
+                    vals = sv_retry.values
+                    if vals.ndim == 3:
+                        shap_values = vals[0, :, class_index]
+                    elif vals.ndim == 2:
+                        shap_values = vals[0]
+                    else:
+                        shap_values = vals
 
                 # Calculate feature importance (top 5)
                 feature_importance = {}
@@ -497,7 +850,6 @@ async def predict(request: PredictionRequest):
                         "magnitude": abs(shap_val),
                     }
 
-                # Sort by magnitude
                 sorted_features = sorted(
                     feature_importance.items(),
                     key=lambda x: x[1]["magnitude"],
@@ -510,7 +862,7 @@ async def predict(request: PredictionRequest):
                     "total_features": len(feature_importance),
                 }
 
-                logger.info(f"✅ SHAP explanation generated")
+                logger.info("SHAP explanation generated")
 
             except Exception as e:
                 logger.warning(f"⚠️ SHAP explanation failed: {e}")
@@ -574,8 +926,30 @@ async def predict(request: PredictionRequest):
             try:
                 logger.info(f"[{trace_id}] Generating personalization...")
 
-                # Simple cohort assignment based on risk score
-                risk_score = float(confidence)  # Use model confidence as risk
+                # Compute risk score aligned with model semantics
+                risk_score = float(confidence)
+                try:
+                    sklearn_model = model._model_impl.sklearn_model
+                    if hasattr(sklearn_model, "predict_proba"):
+                        proba = sklearn_model.predict_proba(input_df)[0]
+                        classes = list(
+                            getattr(sklearn_model, "classes_", list(range(len(proba))))
+                        )
+                        # Default: use class '1' if present, else argmax
+                        if 1 in classes:
+                            pos_idx = classes.index(1)
+                        else:
+                            pos_idx = int(np.argmax(proba))
+                        p_pos = float(proba[pos_idx])
+
+                        # If positive class means favorable (e.g., high rating),
+                        # invert the risk score mapping
+                        high_risk_if_positive = RISK_POSITIVE_CLASS_MEANS_HIGH_RISK.get(
+                            request.model_name, True
+                        )
+                        risk_score = p_pos if high_risk_if_positive else (1.0 - p_pos)
+                except Exception:
+                    pass
 
                 # Determine cohort
                 if risk_score >= 0.75:
@@ -607,7 +981,7 @@ async def predict(request: PredictionRequest):
                     "similar_patients_found": "feature_coming_soon",
                 }
 
-                logger.info(f"✅ Personalization generated - Cohort: {cohort}")
+                logger.info(f"Personalization generated - Cohort: {cohort}")
 
             except Exception as e:
                 logger.warning(f"⚠️ Personalization failed: {e}")
@@ -729,106 +1103,144 @@ async def explain_prediction(request: ExplainRequest):
                 status_code=503,
                 content={
                     "error": "Explainability features not available",
-                    "message": "SHAP/LIME libraries not installed or toolkit initialization failed",
+                    "message": (
+                        "SHAP/LIME libraries not installed or toolkit "
+                        "initialization failed"
+                    ),
                     "trace_id": trace_id,
                     "workaround": "Install with: pip install shap lime",
                 },
             )
 
         logger.info(
-            f"[{trace_id}] Generating {request.explanation_type} explanation for {request.model_name}"
+            f"[{trace_id}] Generating {request.explanation_type} explanation "
+            f"for {request.model_name}"
         )
 
         # Load model from MLflow
-        model_uri = f"models:/{request.model_name}/Production"
+        # Use the shared load_model helper which handles caching and
+        # normalizing pyfunc-wrapped joblib artifacts (exposing sklearn_model)
         try:
-            model = mlflow.pyfunc.load_model(model_uri)
+            model_data = load_model(request.model_name)
+            model = model_data["model"]
             logger.info(f"✅ Loaded model: {request.model_name}")
+        except HTTPException:
+            raise
         except Exception as e:
             raise HTTPException(
                 status_code=404,
-                detail=f"Model '{request.model_name}' not found in Production: {str(e)}",
+                detail=(
+                    f"Model '{request.model_name}' not found in Production: "
+                    f"{str(e)}"
+                ),
             )
 
         # Prepare input data
         input_df = pd.DataFrame([request.patient_data.features])
+        # Align feature order to training if available
+        try:
+            if hasattr(model, "_model_impl") and hasattr(
+                model._model_impl, "sklearn_model"
+            ):
+                input_df = _align_features(input_df, model._model_impl.sklearn_model)
+        except Exception:
+            pass
 
         # Generate explanation based on type
         explanation_result = {}
 
         if request.explanation_type.lower() == "shap":
             try:
-                # Try fast TreeExplainer, fallback to KernelExplainer for multiclass
-                cache_key = f"shap_{request.model_name}"
-                shap_values_raw = None
                 sklearn_model = model._model_impl.sklearn_model
-                explainer_type = "TreeExplainer"
+                # Strict schema validation and alignment
+                _validate_input_features(input_df, sklearn_model)
+                input_df = _align_features(input_df, sklearn_model)
+                # Update background cache and decide masker in model space
+                _update_background_cache(request.model_name, input_df)
 
-                try:
-                    if cache_key not in model_cache:
-                        explainer = shap.TreeExplainer(sklearn_model)
-                        model_cache[cache_key] = explainer
-                        logger.info(
-                            f"✅ Created new SHAP explainer for {request.model_name}"
-                        )
-                    else:
-                        explainer = model_cache[cache_key]
-
-                    shap_values_raw = explainer.shap_values(input_df)
-                except Exception as te:
-                    logger.warning(
-                        f"TreeExplainer failed, attempting KernelExplainer fallback: {te}"
-                    )
-                    # KernelExplainer fallback with more diverse background
-                    x0 = input_df.values[0]
-                    rng = np.random.default_rng(101)
-                    scale = np.maximum(np.abs(x0) * 0.2, 0.1)
-                    background = np.vstack(
-                        [x0 + rng.normal(0, scale) for _ in range(50)]
-                    )
-                    kernel_explainer = shap.KernelExplainer(
-                        sklearn_model.predict_proba, background
-                    )
-                    shap_values_raw = kernel_explainer.shap_values(
-                        input_df.values, nsamples=200
-                    )
-                    explainer_type = "KernelExplainer"
-
-                # Handle multi-output (binary classification returns list of 2)
-                if isinstance(shap_values_raw, list):
-                    # For binary classification, use positive class (index 1)
-                    shap_values = (
-                        shap_values_raw[1]
-                        if len(shap_values_raw) > 1
-                        else shap_values_raw[0]
-                    )
+                pre, clf, is_pipe = _get_pipeline_parts(sklearn_model)
+                if is_pipe and pre is not None:
+                    bg_orig = _get_background_for_model(request.model_name, input_df)
+                    bg_df = pd.DataFrame(bg_orig, columns=list(input_df.columns))
+                    bg_trans = pre.transform(bg_df)
+                    masker = shap.maskers.Independent(bg_trans)
+                    model_fn = clf.predict_proba
                 else:
-                    shap_values = shap_values_raw
+                    background = _get_background_for_model(request.model_name, input_df)
+                    masker = shap.maskers.Independent(background)
+                    model_fn = sklearn_model.predict_proba
 
-                # Convert to numpy array
-                shap_values = np.array(shap_values)
+                cache_key = f"shap_explainer_{request.model_name}"
+                if cache_key not in model_cache:
+                    explainer = shap.Explainer(
+                        model_fn, masker, algorithm="auto", link="logit"
+                    )
+                    model_cache[cache_key] = explainer
+                    explainer_type = "Explainer(auto/logit)"
+                else:
+                    explainer = model_cache[cache_key]
+                    explainer_type = "Explainer(cache)"
 
-                # For single sample: should be (n_features,)
-                # If shape is (1, n_features), squeeze first dimension
-                if len(shap_values.shape) > 1 and shap_values.shape[0] == 1:
-                    shap_values = shap_values[0]
+                if is_pipe and pre is not None:
+                    X_trans = pre.transform(input_df)
+                    sv = explainer(X_trans)
+                else:
+                    sv = explainer(input_df.values)
+                # SHAP values shape: (n_samples, n_features, n_outputs)
+                # or (n_samples, n_features) depending on model output
+                values = sv.values
 
-                # For binary classification: (n_features, 2) -> take class 1
-                if len(shap_values.shape) == 2 and shap_values.shape[0] == len(
-                    input_df.columns
-                ):
-                    # Shape is (n_features, n_classes)
-                    if shap_values.shape[1] == 2:
-                        shap_values = shap_values[:, 1]  # Positive class
+                # Choose class index: use predicted class if available
+                class_index = 0
+                try:
+                    if is_pipe:
+                        proba = sklearn_model.predict_proba(input_df)[0]
                     else:
-                        # For multiclass, take the class with highest probability
-                        # Get prediction to determine which class to explain
-                        pred = model.predict(input_df)
-                        pred_class = int(pred[0])
-                        # Ensure valid index (0-based)
-                        if pred_class >= shap_values.shape[1]:
-                            pred_class = shap_values.shape[1] - 1
-                        shap_values = shap_values[:, pred_class]
+                        proba = sklearn_model.predict_proba(input_df)[0]
+                    class_index = int(np.argmax(proba))
+                except Exception:
+                    class_index = 0
+
+                if values.ndim == 3:
+                    shap_values = values[0, :, class_index]
+                elif values.ndim == 2:
+                    shap_values = values[0]
+                else:
+                    shap_values = values
+
+                # Retry with broader background if all near-zero
+                if np.allclose(shap_values, 0, atol=1e-9):
+                    if is_pipe and pre is not None:
+                        bg_orig = _build_background_from_input(
+                            input_df, n=256, scale=0.5
+                        )
+                        bg_df = pd.DataFrame(bg_orig, columns=list(input_df.columns))
+                        bg_trans = pre.transform(bg_df)
+                        masker = shap.maskers.Independent(bg_trans)
+                        explainer_retry = shap.Explainer(
+                            clf.predict_proba, masker, algorithm="auto", link="logit"
+                        )
+                        X_trans = pre.transform(input_df)
+                        sv2 = explainer_retry(X_trans)
+                    else:
+                        background = _build_background_from_input(
+                            input_df, n=256, scale=0.5
+                        )
+                        masker = shap.maskers.Independent(background)
+                        explainer_retry = shap.Explainer(
+                            sklearn_model.predict_proba,
+                            masker,
+                            algorithm="auto",
+                            link="logit",
+                        )
+                        sv2 = explainer_retry(input_df.values)
+                    vals2 = sv2.values
+                    if vals2.ndim == 3:
+                        shap_values = vals2[0, :, class_index]
+                    elif vals2.ndim == 2:
+                        shap_values = vals2[0]
+                    else:
+                        shap_values = vals2
 
                 # Calculate feature importance
                 feature_importance = {}
@@ -866,6 +1278,15 @@ async def explain_prediction(request: ExplainRequest):
                     "feature_importance": dict(sorted_features[:10]),  # Top 10 features
                     "base_value": base_value,
                     "prediction_impact": float(np.sum(shap_values)),
+                    "diagnostics": {
+                        "sum_abs": float(np.sum(np.abs(shap_values))),
+                        "all_zero": bool(np.allclose(shap_values, 0, atol=1e-9)),
+                        "background_used": (
+                            "cache"
+                            if len(BACKGROUND_CACHE.get(request.model_name, [])) >= 64
+                            else "jitter"
+                        ),
+                    },
                     "top_risk_factors": [
                         f[0] for f in sorted_features[:5] if f[1]["shap_value"] > 0
                     ],
@@ -874,7 +1295,7 @@ async def explain_prediction(request: ExplainRequest):
                     ],
                 }
 
-                logger.info("✅ SHAP explanation generated successfully")
+                logger.info("SHAP explanation generated successfully")
 
             except Exception as e:
                 logger.error(f"❌ SHAP explanation failed: {e}", exc_info=True)
@@ -1027,7 +1448,6 @@ async def personalize_treatment(request: PersonalizeRequest):
         logger.info(f"[{trace_id}] Finding similar patients for {request.model_name}")
 
         # Prepare patient data summary (reserved for future use)
-        _feature_count = len(request.patient_data.features)
 
         # TODO: Full personalization integration
         # For now, return structured placeholder

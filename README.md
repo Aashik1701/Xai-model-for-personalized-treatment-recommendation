@@ -113,9 +113,11 @@ venv\Scripts\activate
 # On macOS/Linux:
 source venv/bin/activate
 
-# Install dependencies
-pip install -r requirements.txt
-pip install -e .[dev]
+# Install dependencies (use project venv; Python 3.9–3.11 recommended)
+# NOTE: Python 3.13 is currently not supported by numba/SHAP. If you see
+# "Cannot install on Python version 3.13" errors, switch to this venv.
+./venv/bin/pip install -r requirements.txt
+./venv/bin/pip install -e .[dev]
 ```
 
 ### 4. Configure Environment Variables
@@ -338,7 +340,27 @@ kubectl apply -f deployment/kubernetes/
 
 ## 📚 Documentation
 
-### Generate Documentation
+### 📖 Quick Start
+
+- **[Documentation Index](docs/README.md)** - Start here for navigation
+- **[System Status](docs/100_PERCENT_COVERAGE_ACHIEVED.md)** - Latest milestone (5/5 models working)
+- **[API Examples](docs/MODEL_SAMPLES_FULL_XAI.md)** - Complete usage examples
+- **[Feature Schemas](docs/MODEL_FEATURE_SCHEMAS.md)** - Model input formats
+
+### 🔧 Technical Documentation
+
+- **[Final Report](docs/XAI_COMPLETE_FINAL_REPORT.md)** - Comprehensive technical report
+- **[Architecture](docs/architecture_overview.md)** - System design
+- **[Requirements](docs/requirements.md)** - Specifications
+
+### 📦 Additional Resources
+
+- **[MLflow Guide](docs/MLFLOW_DASHBOARD_QUICK_REFERENCE.md)** - Experiment tracking
+- **[Data Guide](docs/NEXT_STEPS_NEW_DATASETS.md)** - Dataset usage
+- **[Value Stream Mapping](docs/VALUE_STREAM_MAPPING.md)** - What was kept vs removed
+- **[Documentation Cleanup Summary](docs/DOCUMENTATION_CLEANUP_SUMMARY.md)** - Detailed cleanup log
+
+### Generate Sphinx Documentation
 
 ```bash
 # Using VS Code task
@@ -347,6 +369,22 @@ Ctrl+Shift+P → "Tasks: Run Task" → "Build Documentation"
 # Or manually
 sphinx-build -b html docs/source docs/build
 ```
+
+---
+
+## 🎯 Project Status
+
+✅ **Production Ready** - 5/5 Models (100% Coverage)
+
+- HeartDisease: 34.23ms
+- BreastCancer: 30.52ms
+- SyntheaLongitudinal: 29.77ms
+- ISICSkinCancer: 29.19ms
+- DrugReviews: 13.84ms ⚡ (fastest!)
+
+**Average Performance**: 27.51ms (77.5% faster than 200ms target)
+
+---
 
 ## 🤝 Contributing
 
